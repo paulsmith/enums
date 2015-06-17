@@ -1,0 +1,2 @@
+Generate Go enum methods
+========================
