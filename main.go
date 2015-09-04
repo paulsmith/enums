@@ -87,7 +87,19 @@ func (g *Generator) parsePackageDir(dir string) {
 	var names []string
 	names = append(names, pkg.GoFiles...)
 	names = append(names, pkg.CgoFiles...)
+	names = prefixDirectory(dir, names)
 	g.parsePackage(dir, names)
+}
+
+func prefixDirectory(directory string, names []string) []string {
+	if directory == "." {
+		return names
+	}
+	ret := make([]string, len(names))
+	for i, name := range names {
+		ret[i] = filepath.Join(directory, name)
+	}
+	return ret
 }
 
 func (g *Generator) parsePackage(dir string, names []string) {
@@ -111,7 +123,7 @@ func (g *Generator) parsePackage(dir string, names []string) {
 	config := types.Config{}
 	info := &types.Info{Defs: defs}
 	if _, err := config.Check(dir, fset, files, info); err != nil {
-		log.Fatalf("type-checking package: %v", err)
+		log.Printf("type-checking package: %v", err)
 	}
 
 	g.pkg = &Package{
@@ -222,6 +234,11 @@ func init() {
 	if _, ok := interface{}(v).(fmt.Stringer); ok {
 		_{{$typename}}NameToValue = map[string]{{$typename}} {
 			{{range $values}}interface{}({{.Name}}).(fmt.Stringer).String(): {{.Name}},
+			{{end}}
+		}
+
+		_{{$typename}}ValueToName = map[{{$typename}}]string {
+			{{range $values}}{{.Name}}: interface{}({{.Name}}).(fmt.Stringer).String(),
 			{{end}}
 		}
 	}
