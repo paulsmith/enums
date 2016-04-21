@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"go/ast"
 	"go/build"
 	"go/constant"
@@ -35,10 +36,18 @@ func main() {
 	typeList := strings.Split(typeNames, ",")
 	directory := "."
 	if flag.NArg() > 0 {
-		directory = flag.Arg(1)
+		directory = flag.Arg(0)
 	}
+	if err := genEnums(typeList, directory); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func genEnums(typeList []string, dir string) error {
 	g := new(Generator)
-	g.parsePackageDir(directory)
+	if err := g.parsePackageDir(dir); err != nil {
+		return err
+	}
 	for _, typeName := range typeList {
 		var analysis = struct {
 			Command        string
@@ -53,18 +62,19 @@ func main() {
 		analysis.TypesAndValues[typeName] = g.values
 		var buf bytes.Buffer
 		if err := genTemplate.Execute(&buf, analysis); err != nil {
-			log.Fatalf("generating code: %v", err)
+			return err
 		}
 		src, err := format.Source(buf.Bytes())
 		if err != nil {
-			log.Printf("internal error: %v", err)
+			log.Printf("WARNING: formatting source: %v", err)
 			src = buf.Bytes()
 		}
-		outputFile := filepath.Join(directory, strings.ToLower(typeName)+"_enum.go")
+		outputFile := filepath.Join(dir, strings.ToLower(typeName)+"_enum.go")
 		if err := ioutil.WriteFile(outputFile, src, 0644); err != nil {
-			log.Fatalf("writing output file: %v", err)
+			return fmt.Errorf("writing output file %s: %v", outputFile, err)
 		}
 	}
+	return nil
 }
 
 type Generator struct {
@@ -78,51 +88,51 @@ type Package struct {
 	defs  map[*ast.Ident]types.Object
 }
 
-func (g *Generator) parsePackageDir(dir string) {
+func (g *Generator) parsePackageDir(dir string) error {
 	pkg, err := build.Default.ImportDir(dir, 0)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("importing dir %s: %v", dir, err)
 	}
 	var names []string
 	names = append(names, pkg.GoFiles...)
 	names = append(names, pkg.CgoFiles...)
-	names = prefixDirectory(dir, names)
-	g.parsePackage(dir, names)
+	names = append(names, pkg.SFiles...)
+	prefixDirectory(dir, names)
+	return g.parsePackage(dir, names)
 }
 
-func prefixDirectory(directory string, names []string) []string {
+func prefixDirectory(directory string, names []string) {
 	if directory == "." {
-		return names
+		return
 	}
-	ret := make([]string, len(names))
 	for i, name := range names {
-		ret[i] = filepath.Join(directory, name)
+		names[i] = filepath.Join(directory, name)
 	}
-	return ret
 }
 
-func (g *Generator) parsePackage(dir string, names []string) {
+func (g *Generator) parsePackage(dir string, names []string) error {
 	var files []*ast.File
 	fset := token.NewFileSet()
 	for _, name := range names {
 		if !strings.HasSuffix(name, ".go") {
 			continue
 		}
-		if dir != "." {
-			name = filepath.Join(dir, name)
-		}
 		f, err := parser.ParseFile(fset, name, nil, 0)
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("parsing file %s: %v", name, err)
 		}
 		files = append(files, f)
+	}
+
+	if len(files) == 0 {
+		return fmt.Errorf("%s: no buildable Go files", dir)
 	}
 
 	defs := make(map[*ast.Ident]types.Object)
 	config := types.Config{Importer: importer.Default()}
 	info := &types.Info{Defs: defs}
 	if _, err := config.Check(dir, fset, files, info); err != nil {
-		log.Printf("type-checking package: %v", err)
+		return fmt.Errorf("type-checking package: %v", err)
 	}
 
 	g.pkg = &Package{
@@ -130,6 +140,8 @@ func (g *Generator) parsePackage(dir string, names []string) {
 		files,
 		defs,
 	}
+
+	return nil
 }
 
 func (g *Generator) valuesForType(typeName string) {
