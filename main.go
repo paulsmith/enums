@@ -10,19 +10,17 @@ import (
 	"flag"
 	"go/ast"
 	"go/build"
+	"go/constant"
 	"go/format"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/tools/go/exact"
-	_ "golang.org/x/tools/go/gcimporter"
-	"golang.org/x/tools/go/types"
 )
 
 func main() {
@@ -33,14 +31,14 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	types := strings.Split(typeNames, ",")
+	typeList := strings.Split(typeNames, ",")
 	directory := "."
 	if flag.NArg() > 0 {
 		directory = flag.Arg(1)
 	}
 	g := new(Generator)
 	g.parsePackageDir(directory)
-	for _, typeName := range types {
+	for _, typeName := range typeList {
 		var analysis = struct {
 			Command        string
 			PackageName    string
@@ -171,11 +169,11 @@ func (g *Generator) valuesForType(typeName string) {
 						log.Fatalf("can't handle non-integer constant type %s", typ)
 					}
 					value := obj.(*types.Const).Val()
-					if value.Kind() != exact.Int {
+					if value.Kind() != constant.Int {
 						log.Fatalf("can't handle non-integer constant value %s", name)
 					}
-					i64, isInt := exact.Int64Val(value)
-					u64, isUint := exact.Uint64Val(value)
+					i64, isInt := constant.Int64Val(value)
+					u64, isUint := constant.Uint64Val(value)
 					if !isInt && !isUint {
 						log.Fatalf("internal error: value of %s is not an integer: %s", name, value.String())
 					}
