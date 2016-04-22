@@ -12,6 +12,7 @@ import (
 	"go/build"
 	"go/constant"
 	"go/format"
+	"go/importer"
 	"go/parser"
 	"go/token"
 	"go/types"
@@ -118,7 +119,7 @@ func (g *Generator) parsePackage(dir string, names []string) {
 	}
 
 	defs := make(map[*ast.Ident]types.Object)
-	config := types.Config{}
+	config := types.Config{Importer: importer.Default()}
 	info := &types.Info{Defs: defs}
 	if _, err := config.Check(dir, fset, files, info); err != nil {
 		log.Printf("type-checking package: %v", err)
